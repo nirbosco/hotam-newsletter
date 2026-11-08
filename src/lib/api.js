@@ -18,6 +18,10 @@ const ERRORS = {
   ai_unavailable: 'כלי ה-AI לא זמינים כרגע. אפשר להמשיך לכתוב ולהעלות תמונה מהמכשיר',
   ai_failed: 'ה-AI לא הצליח הפעם. נסו שוב',
   not_enough_words: 'לא הצלחנו ליצור מספיק מילים. נסו נושא אחר',
+  video_disabled: 'המנחה לא הפעיל יצירת סרטונים בניוזלטר הזה',
+  video_quota: 'נגמרה מכסת הסרטונים של הניוזלטר',
+  empty_comment: 'התגובה ריקה',
+  too_many_comments: 'יש כבר יותר מדי תגובות לכתבה הזאת',
 };
 
 export function errText(e) {
@@ -43,6 +47,9 @@ export const api = {
   adminGet: (code, key) => rpc('nl_admin_get', { p_code: code, p_key: key }),
   adminUpdate: (code, key, patch) => rpc('nl_admin_update_workspace', { p_code: code, p_key: key, p_patch: patch }),
   adminPost: (code, key, id, action) => rpc('nl_admin_post_action', { p_code: code, p_key: key, p_id: id, p_action: action }),
+  like: (code, id, delta) => rpc('nl_like', { p_code: code, p_id: id, p_delta: delta }),
+  comment: (code, id, author, body) => rpc('nl_add_comment', { p_code: code, p_id: id, p_author: author, p_body: body }),
+  adminDeleteComment: (code, key, id) => rpc('nl_admin_delete_comment', { p_code: code, p_key: key, p_comment: id }),
 };
 
 export async function ai(code, action, payload) {

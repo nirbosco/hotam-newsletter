@@ -3,11 +3,13 @@ import { ArrowLeft, Loader2, Sparkles, Users, Monitor, PenLine } from 'lucide-re
 import { api, errText } from '../lib/api.js';
 import { local } from '../lib/local.js';
 import { go } from '../App.jsx';
+import TemplatePicker from '../components/TemplatePicker.jsx';
 
 export default function Home() {
   const [name, setName] = useState('');
   const [subtitle, setSubtitle] = useState('');
   const [code, setCode] = useState('');
+  const [template, setTemplate] = useState('hotam');
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState('');
   const recent = local.recent();
@@ -17,7 +19,7 @@ export default function Home() {
     if (!name.trim()) { setErr('תנו שם לניוזלטר'); return; }
     setBusy('create'); setErr('');
     try {
-      const r = await api.createWorkspace(name.trim(), subtitle.trim(), 'hotam');
+      const r = await api.createWorkspace(name.trim(), subtitle.trim(), template);
       local.setAdminKey(r.code, r.admin_key);
       local.addRecent(r.code, name.trim(), true);
       go(`/n/${r.code}/admin?welcome=1`);
@@ -59,6 +61,10 @@ export default function Home() {
             <span>כותרת משנה <em>(לא חובה)</em></span>
             <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="מגזין שיתופי" maxLength={200} />
           </label>
+          <div className="field">
+            <span>עיצוב</span>
+            <TemplatePicker value={template} onChange={setTemplate} />
+          </div>
           <button className="btn btn-primary btn-lg" disabled={!!busy}>
             {busy === 'create' ? <Loader2 className="spin" size={20} /> : null}
             יצירת הניוזלטר <ArrowLeft size={18} />

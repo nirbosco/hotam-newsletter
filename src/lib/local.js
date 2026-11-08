@@ -12,6 +12,7 @@ export const local = {
   draft: (code) => get(`nl:draft:${code}`),
   setDraft: (code, d) => set(`nl:draft:${code}`, d),
   liked: (code) => get(`nl:liked:${code}`, []),
+  setLiked: (code, ids) => set(`nl:liked:${code}`, ids),
   recent: () => get('nl:recent', []),
   addRecent: (code, name, admin) => {
     const list = get('nl:recent', []).filter((r) => r.code !== code);

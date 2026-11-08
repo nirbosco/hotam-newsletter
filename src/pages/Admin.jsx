@@ -5,6 +5,7 @@ import { api, errText } from '../lib/api.js';
 import { local } from '../lib/local.js';
 import { orderPosts, timeAgo } from '../lib/content.js';
 import { FONTS, TEMPLATES, resolveTheme } from '../lib/themes.js';
+import TemplatePicker from '../components/TemplatePicker.jsx';
 import { Spinner, NotFound, QR, useToast, copy, baseUrl } from '../components/Common.jsx';
 import { TypeTag } from '../components/Post.jsx';
 import QRCode from 'qrcode';
@@ -81,13 +82,16 @@ function AdminPanel({ code, adminKey, welcome, onLogout }) {
           <button className={tab === 'posts' ? 'on' : ''} onClick={() => setTab('posts')}><LayoutList size={18} /> כתבות <span className="count">{posts.length}</span></button>
           <button className={tab === 'settings' ? 'on' : ''} onClick={() => setTab('settings')}><Settings size={18} /> עיצוב והגדרות</button>
         </nav>
-        <a className="btn btn-primary side-cta" href={`#/n/${code}/screen`}><Monitor size={18} /> מסך ההקרנה</a>
+        <div className="side-ctas">
+          <a className="btn btn-primary" href={`#/n/${code}/screen`}><Monitor size={18} /> מסך ההקרנה</a>
+          <a className="btn btn-soft" href={`#/n/${code}/print`}><Download size={16} /> הורדה כ-PDF</a>
+        </div>
       </aside>
 
       <main className="admin-main">
         {tab === 'share' && <SharePanel code={code} adminKey={adminKey} welcome={welcome} say={say} />}
         {tab === 'posts' && <PostsPanel code={code} adminKey={adminKey} ws={ws} posts={posts} hidden={hidden} reload={reload} setData={setData} say={say} />}
-        {tab === 'settings' && <SettingsPanel code={code} adminKey={adminKey} ws={ws} aiToday={data.ai_today} reload={reload} say={say} />}
+        {tab === 'settings' && <SettingsPanel code={code} adminKey={adminKey} ws={ws} aiToday={data.ai_today} videosUsed={data.videos_used} reload={reload} say={say} />}
       </main>
       {toast}
     </div>
@@ -164,6 +168,13 @@ function PostsPanel({ code, adminKey, ws, posts, hidden, reload, setData, say })
         <h2>כתבות</h2>
         <span className="muted">{posts.length} כתבות{hidden ? ` · ${hidden} מוסתרות` : ''}</span>
       </div>
+      {posts.length > 0 && (
+        <div className="groups-row">
+          <span className="muted small">מי כבר פרסם:</span>
+          {Object.entries(posts.reduce((m, p) => { const g = p.author.split(' (')[0] || 'בלי שם'; m[g] = (m[g] || 0) + 1; return m; }, {}))
+            .sort((a, b) => b[1] - a[1]).map(([g, n]) => <span className="chip" key={g}>{g} · {n}</span>)}
+        </div>
+      )}
       {posts.length === 0 ? (
         <div className="card empty-admin">עוד אין כתבות. שתפו את הקישור לכותבים, והכתבות יופיעו כאן.</div>
       ) : (
@@ -178,7 +189,7 @@ function PostsPanel({ code, adminKey, ws, posts, hidden, reload, setData, say })
                     <button className="icon-btn" onClick={() => move(i, 1)} disabled={i === posts.length - 1} aria-label="למטה"><ArrowDown size={15} /></button>
                   </td>
                   <td><TypeTag type={p.type} /></td>
-                  <td><input className="inline-edit" defaultValue={p.title} onBlur={(e) => rename(p, e.target.value)} onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} aria-label="כותרת" />{p.hidden && <span className="chip">מוסתרת</span>}</td>
+                  <td><input className="inline-edit" defaultValue={p.title} onBlur={(e) => rename(p, e.target.value)} onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} aria-label="כותרת" />{p.hidden && <span className="chip">מוסתרת</span>}{(p.likes > 0 || p.comments?.length > 0) && <span className="muted small nowrap"> ♥ {p.likes} · 💬 {p.comments?.length || 0}</span>}</td>
                   <td className="hide-sm muted">{p.author}</td>
                   <td className="hide-sm muted nowrap">{timeAgo(p.created_at)}</td>
                   <td className="actions-cell">
@@ -199,13 +210,15 @@ function PostsPanel({ code, adminKey, ws, posts, hidden, reload, setData, say })
   );
 }
 
-function SettingsPanel({ code, adminKey, ws, aiToday, reload, say }) {
+function SettingsPanel({ code, adminKey, ws, aiToday, videosUsed, reload, say }) {
   const theme = useMemo(() => resolveTheme(ws), [ws]);
   const [f, setF] = useState(() => ({
     name: ws.name, subtitle: ws.subtitle, template: ws.template,
     primary: theme.colors.primary, accent: theme.colors.accent,
     display: theme.fonts.display, body: theme.fonts.body,
     showLogo: theme.showLogo, ai: ws.settings?.ai_enabled !== false,
+    video: !!ws.settings?.video_enabled, videoQuota: ws.settings?.video_quota ?? 3,
+    likes: ws.settings?.likes_enabled !== false, comments: ws.settings?.comments_enabled !== false,
   }));
   const [busy, setBusy] = useState(false);
   const set = (p) => setF((x) => ({ ...x, ...p }));
@@ -215,7 +228,7 @@ function SettingsPanel({ code, adminKey, ws, aiToday, reload, say }) {
       await api.adminUpdate(code, adminKey, {
         name: f.name, subtitle: f.subtitle, template: f.template,
         theme: { colors: { primary: f.primary, accent: f.accent }, fonts: { display: f.display, body: f.body }, showLogo: f.showLogo },
-        settings: { ai_enabled: f.ai },
+        settings: { ai_enabled: f.ai, video_enabled: f.video, video_quota: f.videoQuota, likes_enabled: f.likes, comments_enabled: f.comments },
       });
       await reload(); say('ההגדרות נשמרו');
     } catch (e) { say(errText(e), 'err'); }
@@ -233,7 +246,8 @@ function SettingsPanel({ code, adminKey, ws, aiToday, reload, say }) {
         </div>
         <div className="card">
           <h3>עיצוב</h3>
-          <div className="row">
+          <TemplatePicker value={f.template} onChange={(k) => { const t = TEMPLATES[k]; set({ template: k, primary: t.colors.primary, accent: t.colors.accent, display: t.fonts.display, body: t.fonts.body, showLogo: !!t.brand }); }} />
+          <div className="row" style={{ marginTop: 16 }}>
             <label className="field color"><span>צבע ראשי</span><input type="color" value={f.primary} onChange={(e) => set({ primary: e.target.value })} /></label>
             <label className="field color"><span>צבע משני</span><input type="color" value={f.accent} onChange={(e) => set({ accent: e.target.value })} /></label>
           </div>
@@ -243,12 +257,24 @@ function SettingsPanel({ code, adminKey, ws, aiToday, reload, say }) {
           </div>
           <label className="check"><input type="checkbox" checked={f.showLogo} onChange={(e) => set({ showLogo: e.target.checked })} /> הצגת הלוגו של חותם</label>
           <button className="btn btn-soft btn-sm" onClick={resetTheme}>חזרה לעיצוב המקורי</button>
-          <p className="muted small">תבניות עיצוב נוספות יגיעו בגרסה הבאה.</p>
         </div>
         <div className="card">
           <h3>כלי AI</h3>
           <label className="check"><input type="checkbox" checked={f.ai} onChange={(e) => set({ ai: e.target.checked })} /> הכותבים יכולים להשתמש ב-AI (כותרות, ניסוח, תמונות ותשבץ)</label>
-          <p className="muted small">שימוש היום: {aiToday?.text || 0} פעולות טקסט · {aiToday?.image || 0} תמונות</p>
+          <label className="check"><input type="checkbox" checked={f.video} disabled={!f.ai} onChange={(e) => set({ video: e.target.checked })} /> יצירת סרטונים ב-AI</label>
+          {f.video && f.ai && (
+            <label className="field inline-num"><span>מכסת סרטונים לניוזלטר</span>
+              <select value={f.videoQuota} onChange={(e) => set({ videoQuota: Number(e.target.value) })}>{[1, 2, 3, 5, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}</select>
+            </label>
+          )}
+          <p className="muted small">שימוש היום: {aiToday?.text || 0} פעולות טקסט · {aiToday?.image || 0} תמונות · נוצרו {videosUsed || 0} סרטונים מתוך {f.videoQuota}</p>
+          <p className="muted small">כל סרטון נוצר בכחצי דקה ועולה כסף בחשבון ה-AI, ולכן יש מכסה.</p>
+        </div>
+        <div className="card">
+          <h3>תגובות ולייקים</h3>
+          <label className="check"><input type="checkbox" checked={f.likes} onChange={(e) => set({ likes: e.target.checked })} /> לייקים לכתבות</label>
+          <label className="check"><input type="checkbox" checked={f.comments} onChange={(e) => set({ comments: e.target.checked })} /> תגובות לכתבות</label>
+          <p className="muted small">אפשר למחוק תגובה מתוך הכתבה במסך ההקרנה, כשאתם מחוברים כמנחים.</p>
         </div>
       </div>
       <div className="publish-bar"><button className="btn btn-primary btn-lg" onClick={save} disabled={busy}>{busy && <Loader2 className="spin" size={18} />} שמירת ההגדרות</button></div>

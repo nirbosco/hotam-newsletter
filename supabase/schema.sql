@@ -328,3 +328,124 @@ begin
 end $$;
 revoke all on function public.nl_ai_refund(text,text) from public, anon, authenticated;
 grant execute on function public.nl_ai_refund(text,text) to service_role;
+
+-- ===================== גל ב =====================
+-- תגובות
+create table if not exists public.nl_comments (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.nl_posts(id) on delete cascade,
+  author text not null default '' check (char_length(author) <= 80),
+  body text not null check (char_length(body) between 1 and 500),
+  created_at timestamptz not null default now()
+);
+create index if not exists nl_comments_post_idx on public.nl_comments(post_id, created_at);
+alter table public.nl_comments enable row level security;
+revoke all on public.nl_comments from anon, authenticated;
+
+-- כתבה כולל תגובות
+create or replace function public.nl_post_json(p public.nl_posts) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'id', p.id, 'type', p.type, 'title', p.title, 'subtitle', p.subtitle, 'author', p.author,
+    'content', p.content, 'image', p.image, 'items', p.items, 'crossword', p.crossword,
+    'hidden', p.hidden, 'likes', p.likes, 'created_at', p.created_at, 'updated_at', p.updated_at,
+    'comments', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'author', c.author, 'body', c.body, 'created_at', c.created_at) order by c.created_at)
+                          from public.nl_comments c where c.post_id = p.id), '[]'::jsonb))
+$$;
+
+create or replace function public.nl_like(p_code text, p_id uuid, p_delta int)
+returns int language plpgsql security definer set search_path = public as $$
+declare w public.nl_workspaces; n int;
+begin
+  w := public.nl_ws(p_code);
+  if w.id is null then raise exception 'not_found'; end if;
+  if coalesce((w.settings->>'likes_enabled')::boolean, true) = false then raise exception 'disabled'; end if;
+  update public.nl_posts set likes = greatest(likes + case when p_delta < 0 then -1 else 1 end, 0)
+  where id = p_id and workspace_id = w.id and not hidden returning likes into n;
+  if n is null then raise exception 'not_found'; end if;
+  perform public.nl_notify(w.code, 'like');
+  return n;
+end $$;
+
+create or replace function public.nl_add_comment(p_code text, p_id uuid, p_author text, p_body text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w public.nl_workspaces; n int; cid uuid;
+begin
+  w := public.nl_ws(p_code);
+  if w.id is null then raise exception 'not_found'; end if;
+  if coalesce((w.settings->>'comments_enabled')::boolean, true) = false then raise exception 'disabled'; end if;
+  if not exists (select 1 from public.nl_posts where id = p_id and workspace_id = w.id and not hidden) then raise exception 'not_found'; end if;
+  if coalesce(trim(p_body), '') = '' then raise exception 'empty_comment'; end if;
+  select count(*) into n from public.nl_comments where post_id = p_id;
+  if n >= 200 then raise exception 'too_many_comments'; end if;
+  insert into public.nl_comments (post_id, author, body) values (p_id, left(trim(coalesce(p_author, '')), 80), left(trim(p_body), 500)) returning id into cid;
+  perform public.nl_notify(w.code, 'comment');
+  return jsonb_build_object('id', cid);
+end $$;
+
+create or replace function public.nl_admin_delete_comment(p_code text, p_key text, p_comment uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w public.nl_workspaces;
+begin
+  w := public.nl_ws(p_code);
+  if w.id is null or not public.nl_is_admin(w.id, p_key) then raise exception 'forbidden'; end if;
+  delete from public.nl_comments c using public.nl_posts p where c.id = p_comment and c.post_id = p.id and p.workspace_id = w.id;
+  perform public.nl_notify(w.code, 'comment');
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- מכסות: סרטונים רק כשהמנחה הפעיל
+create or replace function public.nl_ai_consume(p_code text, p_kind text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w public.nl_workspaces; lim int; used int;
+begin
+  w := public.nl_ws(p_code);
+  if w.id is null then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
+  if coalesce((w.settings->>'ai_enabled')::boolean, true) = false then
+    return jsonb_build_object('ok', false, 'reason', 'disabled');
+  end if;
+  if p_kind = 'video' and coalesce((w.settings->>'video_enabled')::boolean, false) = false then
+    return jsonb_build_object('ok', false, 'reason', 'video_disabled');
+  end if;
+  lim := case p_kind when 'image' then 60 when 'video' then least(coalesce((w.settings->>'video_quota')::int, 3), 10) else 300 end;
+  if p_kind = 'video' then
+    -- מכסת סרטונים לכל חיי הניוזלטר, לא ליום
+    select coalesce(sum(count), 0) + 1 into used from public.nl_ai_usage where workspace_id = w.id and kind = 'video';
+    if used > lim then return jsonb_build_object('ok', false, 'reason', 'video_quota'); end if;
+  end if;
+  insert into public.nl_ai_usage (workspace_id, day, kind, count) values (w.id, current_date, p_kind, 1)
+  on conflict (workspace_id, day, kind) do update set count = public.nl_ai_usage.count + 1
+  returning count into used;
+  if p_kind <> 'video' and used > lim then
+    update public.nl_ai_usage set count = count - 1 where workspace_id = w.id and day = current_date and kind = p_kind;
+    return jsonb_build_object('ok', false, 'reason', 'quota');
+  end if;
+  return jsonb_build_object('ok', true, 'workspace_id', w.id);
+end $$;
+
+-- סך הסרטונים שנוצרו, למסך הניהול
+create or replace function public.nl_admin_get(p_code text, p_key text)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare w public.nl_workspaces;
+begin
+  w := public.nl_ws(p_code);
+  if w.id is null or not public.nl_is_admin(w.id, p_key) then raise exception 'forbidden'; end if;
+  return jsonb_build_object('workspace', public.nl_ws_json(w),
+    'posts', coalesce((select jsonb_agg(public.nl_post_json(p) order by p.created_at desc)
+                       from public.nl_posts p where p.workspace_id = w.id), '[]'::jsonb),
+    'ai_today', coalesce((select jsonb_object_agg(kind, count) from public.nl_ai_usage where workspace_id = w.id and day = current_date), '{}'::jsonb),
+    'videos_used', coalesce((select sum(count) from public.nl_ai_usage where workspace_id = w.id and kind = 'video'), 0));
+end $$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array['nl_post_json(public.nl_posts)', 'nl_like(text,uuid,integer)', 'nl_add_comment(text,uuid,text,text)', 'nl_admin_delete_comment(text,text,uuid)'] loop
+    execute format('revoke all on function public.%s from public', f);
+  end loop;
+end $$;
+grant execute on function public.nl_like(text,uuid,integer), public.nl_add_comment(text,uuid,text,text), public.nl_admin_delete_comment(text,text,uuid) to anon, authenticated;
+revoke all on function public.nl_ai_consume(text,text) from public, anon, authenticated;
+grant execute on function public.nl_ai_consume(text,text) to service_role;
+update public.nl_workspaces set settings = '{"likes_enabled": true, "comments_enabled": true}'::jsonb || settings where not settings ? 'likes_enabled';
+alter table public.nl_workspaces alter column settings set default '{"ai_enabled": true, "video_enabled": false, "video_quota": 3, "likes_enabled": true, "comments_enabled": true}'::jsonb;

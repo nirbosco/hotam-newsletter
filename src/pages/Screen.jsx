@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Maximize, Minimize, PenLine, QrCode, Pencil } from 'lucide-react';
+import { Maximize, Minimize, PenLine, QrCode, Pencil, FileDown } from 'lucide-react';
 import { useNewsletter } from '../lib/useNewsletter.js';
 import { local } from '../lib/local.js';
 import { orderPosts } from '../lib/content.js';
 import { resolveTheme, themeStyle, loadFonts } from '../lib/themes.js';
 import { Spinner, NotFound, QR, baseUrl } from '../components/Common.jsx';
-import { PostCard, PostView } from '../components/Post.jsx';
+import { PostCard, PostView, useLikes } from '../components/Post.jsx';
 
 export default function Screen({ code }) {
   const adminKey = local.adminKey(code);
-  const { data, error, loading } = useNewsletter(code);
+  const { data, error, loading, reload } = useNewsletter(code);
+  const likes = useLikes(code);
   const [open, setOpen] = useState(null);
   const [full, setFull] = useState(false);
   const [showJoin, setShowJoin] = useState(true);
@@ -43,7 +44,7 @@ export default function Screen({ code }) {
   useEffect(() => {
     if (open && data) {
       const p = data.posts.find((x) => x.id === open.id);
-      if (!p) setOpen(null); else if (p.updated_at !== open.updated_at) setOpen(p);
+      if (!p) setOpen(null); else if (p.updated_at !== open.updated_at || p.likes !== open.likes || p.comments?.length !== open.comments?.length) setOpen(p);
     }
   }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -63,11 +64,12 @@ export default function Screen({ code }) {
   const year = new Date().toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
 
   return (
-    <div className="screen" style={themeStyle(theme)}>
+    <div className="screen" data-template={theme.key} style={themeStyle(theme)}>
       <div className="screen-bar">
         <div className="row">
           <a className="btn btn-soft btn-sm" href={adminKey ? `#/n/${code}/admin` : `#/n/${code}`}><PenLine size={15} /> {adminKey ? 'ניהול' : 'כתיבה'}</a>
           <button className="btn btn-soft btn-sm" onClick={() => setShowJoin(!showJoin)}><QrCode size={15} /> {showJoin ? 'הסתרת הקוד' : 'הצגת הקוד'}</button>
+          <a className="btn btn-soft btn-sm" href={`#/n/${code}/print`}><FileDown size={15} /> PDF</a>
         </div>
         <button className="btn btn-soft btn-sm" onClick={() => (full ? document.exitFullscreen() : document.documentElement.requestFullscreen?.())}>
           {full ? <Minimize size={15} /> : <Maximize size={15} />} {full ? 'יציאה ממסך מלא' : 'מסך מלא'}
@@ -106,14 +108,14 @@ export default function Screen({ code }) {
         <main className="masonry">
           {posts.map((p) => (
             <div key={p.id} className="masonry-item">
-              <PostCard post={p} onOpen={setOpen} fresh={fresh.has(p.id)} />
+              <PostCard post={p} onOpen={setOpen} fresh={fresh.has(p.id)} likes={likes} settings={ws.settings} />
               {mine[p.id] && <a className="mine-edit" href={`#/n/${code}?edit=${p.id}`}><Pencil size={13} /> תיקון הכתבה שלי</a>}
             </div>
           ))}
         </main>
       )}
 
-      {open && <PostView post={open} onClose={() => setOpen(null)} />}
+      {open && <PostView post={open} onClose={() => setOpen(null)} code={code} likes={likes} settings={ws.settings} adminKey={adminKey} onChanged={reload} />}
     </div>
   );
 }

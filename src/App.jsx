@@ -3,6 +3,7 @@ import Home from './pages/Home.jsx';
 import Writer from './pages/Writer.jsx';
 import Screen from './pages/Screen.jsx';
 import Admin from './pages/Admin.jsx';
+import Print from './pages/Print.jsx';
 
 function parse() {
   const h = window.location.hash.replace(/^#\/?/, '');
@@ -34,6 +35,7 @@ export default function App() {
     const code = parts[1].toUpperCase();
     if (parts[2] === 'screen') return <Screen code={code} />;
     if (parts[2] === 'admin') return <Admin code={code} params={params} />;
+    if (parts[2] === 'print') return <Print code={code} />;
     return <Writer code={code} params={params} />;
   }
   return <Home />;

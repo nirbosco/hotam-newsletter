@@ -91,7 +91,9 @@ function Composer({ code, ws, identity, aiEnabled, editId, say }) {
   const [titles, setTitles] = useState([]);
   const [done, setDone] = useState(null);
   const titleRef = useRef(null);
-  const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+  const formRef = useRef(form);
+  const set = (patch) => { const n = { ...formRef.current, ...patch }; formRef.current = n; setForm(n); };
+  formRef.current = form;
   const err = (m) => say(m, 'err');
 
   // טעינת כתבה לעריכה
@@ -168,6 +170,10 @@ function Composer({ code, ws, identity, aiEnabled, editId, say }) {
   };
 
   const publish = async () => {
+    // רגע קצר כדי שהעורך יסיים לעבד את ההקלדה האחרונה (מקלדות בטלפון מחזיקות את המילה האחרונה עד שיוצאים מהשדה)
+    document.activeElement?.blur?.();
+    await new Promise((r) => setTimeout(r, 120));
+    const form = formRef.current; // תמיד הגרסה העדכנית, גם בלחיצה מהירה אחרי הקלדה
     if (!form.title.trim()) { err('חסרה כותרת'); titleRef.current?.focus(); return; }
     let crossword = null;
     if (type === 'crossword') {
@@ -177,7 +183,7 @@ function Composer({ code, ws, identity, aiEnabled, editId, say }) {
     }
     if (type === 'letters' && !form.items.length) { err('הוסיפו לפחות מכתב אחד'); return; }
     if (type === 'podcast' && !form.content) { err('העלו קובץ שמע'); return; }
-    if (type === 'video' && !form.content) { err('הדביקו קישור לסרטון'); return; }
+    if (type === 'video' && !form.content) { err('הוסיפו סרטון: קישור ליוטיוב או סרטון שיצרתם'); return; }
     if (type === 'image' && !form.image) { err('צרו או העלו תמונה'); return; }
 
     const post = { type, title: form.title.trim(), subtitle: form.subtitle.trim(), author: authorOf(identity), content: form.content, image: hasImage ? form.image : '', items: type === 'letters' ? form.items : [], crossword };
@@ -252,7 +258,7 @@ function Composer({ code, ws, identity, aiEnabled, editId, say }) {
         )}
 
         {type === 'letters' && <LettersEditor items={form.items} setItems={(items) => set({ items })} onError={err} />}
-        {type === 'video' && <VideoField value={form.content} onChange={(content) => set({ content })} />}
+        {type === 'video' && <VideoField value={form.content} onChange={(content) => set({ content })} code={code} videoEnabled={aiEnabled && !!ws.settings?.video_enabled} onError={err} />}
         {type === 'podcast' && <AudioField value={form.content} onChange={(content) => set({ content })} onError={err} />}
         {type === 'crossword' && <CrosswordEditor code={code} words={form.words} setWords={(words) => set({ words })} aiEnabled={aiEnabled} onError={err} />}
       </div>

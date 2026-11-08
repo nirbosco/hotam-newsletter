@@ -144,6 +144,44 @@ async function image(prompt: string, style: string, workspaceId: string) {
   return { url: admin.storage.from("nl-media").getPublicUrl(path).data.publicUrl };
 }
 
+// ===== סרטונים (Gemini Omni, Interactions API) =====
+const VIDEO_MODEL = Deno.env.get("NL_VIDEO_MODEL") ?? "gemini-omni-1.2-flash";
+const IX = "https://generativelanguage.googleapis.com/v1beta/interactions";
+
+async function videoStart(prompt: string, style: string) {
+  const styleText = STYLES[style] ?? STYLES.illustration;
+  const r = await fetch(`${IX}?key=${KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: VIDEO_MODEL,
+      input: `${AUDIENCE}\nצור סרטון קצר לניוזלטר. סגנון: ${styleText}. צילום רציף וחלק, בלי טקסט כתוב על המסך.\nהתיאור: ${prompt.slice(0, 1200)}`,
+      background: true,
+      response_format: { type: "video", aspect_ratio: "16:9", resolution: "720p", duration: "6s" },
+    }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.id) throw new Error(`gemini_${r.status}: ${JSON.stringify(d.error ?? d).slice(0, 200)}`);
+  return { id: d.id };
+}
+
+async function videoCheck(id: string, workspaceId: string) {
+  if (!/^[\w-]{10,200}$/.test(id)) throw new Error("bad_id");
+  const r = await fetch(`${IX}/${id}?key=${KEY}`);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`gemini_${r.status}: ${JSON.stringify(d.error ?? d).slice(0, 200)}`);
+  if (d.status === "in_progress" || d.status === "queued") return { status: "working" };
+  if (d.status !== "completed") throw new Error(`video_${d.status}: ${JSON.stringify(d.error ?? "").slice(0, 160)}`);
+  let video: any = null;
+  for (const st of d.steps ?? []) for (const c of st.content ?? []) if (c.type === "video" && c.data) video = c;
+  if (!video) throw new Error("blocked_or_empty video");
+  const bytes = Uint8Array.from(atob(video.data), (ch) => ch.charCodeAt(0));
+  const path = `ai/${workspaceId}/${id.slice(-24)}.mp4`;
+  const up = await admin.storage.from("nl-media").upload(path, bytes, { contentType: "video/mp4", upsert: true });
+  if (up.error) throw new Error("upload_failed: " + up.error.message);
+  return { status: "done", url: admin.storage.from("nl-media").getPublicUrl(path).data.publicUrl };
+}
+
 // ===== שרת =====
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -155,7 +193,20 @@ Deno.serve(async (req) => {
   const { action, code } = body ?? {};
   if (!code || !action) return json({ error: "bad_request" }, 400);
 
-  const kind = action === "image" ? "image" : "text";
+  // בדיקת סטטוס של סרטון: לא צורכת מכסה
+  if (action === "video_check") {
+    const { data: ws } = await admin.from("nl_workspaces").select("id").eq("code", String(code).toUpperCase()).maybeSingle();
+    if (!ws) return json({ error: "not_found" }, 404);
+    try { return json(await videoCheck(String(body.id ?? ""), ws.id)); }
+    catch (e) {
+      const msg = String((e as Error)?.message ?? e);
+      console.error("video_check", msg);
+      await admin.rpc("nl_ai_refund", { p_code: code, p_kind: "video" });
+      return json({ error: /blocked|SAFETY/i.test(msg) ? "blocked" : "ai_failed", detail: msg.slice(0, 200) }, 502);
+    }
+  }
+
+  const kind = action === "image" ? "image" : action === "video_start" ? "video" : "text";
   const { data: gate, error } = await admin.rpc("nl_ai_consume", { p_code: code, p_kind: kind });
   if (error) return json({ error: "gate_failed" }, 500);
   if (!gate?.ok) return json({ error: gate?.reason ?? "denied" }, gate?.reason === "not_found" ? 404 : 429);
@@ -166,6 +217,7 @@ Deno.serve(async (req) => {
       case "improve": return json(await improve(String(body.html ?? "")));
       case "crossword": return json(await crossword(String(body.topic ?? ""), Number(body.count)));
       case "image": return json(await image(String(body.prompt ?? ""), String(body.style ?? ""), gate.workspace_id));
+      case "video_start": return json(await videoStart(String(body.prompt ?? ""), String(body.style ?? "")));
       default: return json({ error: "unknown_action" }, 400);
     }
   } catch (e) {
