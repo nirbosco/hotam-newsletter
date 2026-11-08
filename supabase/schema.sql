@@ -316,3 +316,15 @@ on conflict (id) do update set public = excluded.public, file_size_limit = exclu
 drop policy if exists "nl-media upload" on storage.objects;
 create policy "nl-media upload" on storage.objects for insert to anon, authenticated
   with check (bucket_id = 'nl-media' and (storage.foldername(name))[1] = 'u');
+
+-- החזרת מכסה כשקריאת AI נכשלה
+create or replace function public.nl_ai_refund(p_code text, p_kind text)
+returns void language plpgsql security definer set search_path = public as $$
+declare w public.nl_workspaces;
+begin
+  w := public.nl_ws(p_code);
+  if w.id is null then return; end if;
+  update public.nl_ai_usage set count = greatest(count - 1, 0) where workspace_id = w.id and day = current_date and kind = p_kind;
+end $$;
+revoke all on function public.nl_ai_refund(text,text) from public, anon, authenticated;
+grant execute on function public.nl_ai_refund(text,text) to service_role;

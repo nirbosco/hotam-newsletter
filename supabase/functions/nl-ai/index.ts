@@ -165,7 +165,10 @@ Deno.serve(async (req) => {
   } catch (e) {
     const msg = String((e as Error)?.message ?? e);
     console.error(action, msg);
+    await admin.rpc("nl_ai_refund", { p_code: code, p_kind: kind });
     const blocked = /blocked|SAFETY|PROHIBITED/i.test(msg);
-    return json({ error: blocked ? "blocked" : "ai_failed", detail: msg.slice(0, 200) }, blocked ? 422 : 502);
+    const unavailable = /gemini_(401|402|403|429)/.test(msg);
+    const error = blocked ? "blocked" : unavailable ? "ai_unavailable" : "ai_failed";
+    return json({ error, detail: msg.slice(0, 200) }, blocked ? 422 : unavailable ? 503 : 502);
   }
 });
