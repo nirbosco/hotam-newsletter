@@ -4,6 +4,7 @@ import { api, errText } from '../lib/api.js';
 import { local } from '../lib/local.js';
 import { go } from '../App.jsx';
 import TemplatePicker from '../components/TemplatePicker.jsx';
+import { FacilitatorGuide, ParticipantGuide, GuideVideo } from '../components/Guides.jsx';
 
 export default function Home() {
   const [name, setName] = useState('');
@@ -100,6 +101,14 @@ export default function Home() {
         <div><PenLine size={22} /><b>פותחים</b><span>נותנים שם ומקבלים קוד וקישור לשיתוף</span></div>
         <div><Users size={22} /><b>כותבים</b><span>כל קבוצה כותבת כתבה, ראיון, תשבץ או פודקאסט</span></div>
         <div><Monitor size={22} /><b>מקרינים</b><span>הניוזלטר נבנה על המסך מול כולם</span></div>
+      </section>
+      <section className="home-guide" id="guide">
+        <h2>איך זה עובד</h2>
+        <GuideVideo />
+        <div className="home-guide-cols">
+          <div className="card"><FacilitatorGuide /></div>
+          <div className="card"><ParticipantGuide /></div>
+        </div>
       </section>
       <footer className="home-foot">פיתוח מקצועי · חותם</footer>
     </div>

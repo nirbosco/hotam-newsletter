@@ -11,6 +11,7 @@ import ImageField from '../components/ImageField.jsx';
 import { CrosswordEditor, crosswordReady } from '../components/Crossword.jsx';
 import { LettersEditor, VideoField, AudioField } from '../components/Fields.jsx';
 import { go } from '../App.jsx';
+import { ParticipantGuide, HelpButton } from '../components/Guides.jsx';
 
 const EMPTY = { type: null, title: '', subtitle: '', content: '', image: '', items: [], words: [] };
 
@@ -40,6 +41,7 @@ export default function Writer({ code, params }) {
         </div>
         <div className="w-actions">
           {identity && <span className="id-chip" title={identity.members}>{identity.group}<button onClick={() => { local.setIdentity(code, null); setIdentity(null); }} aria-label="החלפת קבוצה" title="החלפת קבוצה"><LogOut size={14} /></button></span>}
+          <HelpButton who="participant" />
           <a className="btn btn-outline btn-sm" href={`#/n/${code}/screen`}><Eye size={16} /> לניוזלטר</a>
         </div>
       </header>
@@ -75,6 +77,10 @@ function Entry({ ws, onDone }) {
         <input value={members} onChange={(e) => setMembers(e.target.value)} placeholder="למשל: דנה, יוסי ומאיה" maxLength={120} />
       </label>
       <button className="btn btn-primary btn-lg" disabled={!group.trim()}>מתחילים לכתוב <ArrowLeft size={18} /></button>
+      <details className="entry-guide">
+        <summary>איך זה עובד?</summary>
+        <ParticipantGuide compact />
+      </details>
     </form>
   );
 }

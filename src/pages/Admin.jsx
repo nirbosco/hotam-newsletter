@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Copy, ExternalLink, Eye, EyeOff, Trash2, ArrowUp, ArrowDown, Pencil, Monitor, Share2, LayoutList, Settings, Loader2, KeyRound, ShieldCheck, Download } from 'lucide-react';
+import { Copy, ExternalLink, Eye, EyeOff, Trash2, ArrowUp, ArrowDown, Pencil, Monitor, Share2, LayoutList, Settings, Loader2, KeyRound, ShieldCheck, Download, BookOpen } from 'lucide-react';
 import { useNewsletter } from '../lib/useNewsletter.js';
 import { api, errText } from '../lib/api.js';
 import { local } from '../lib/local.js';
@@ -10,6 +10,7 @@ import { Spinner, NotFound, QR, useToast, copy, baseUrl } from '../components/Co
 import { TypeTag } from '../components/Post.jsx';
 import QRCode from 'qrcode';
 import { go } from '../App.jsx';
+import { FacilitatorGuide, ParticipantGuide, GuideVideo } from '../components/Guides.jsx';
 
 export default function Admin({ code, params }) {
   const [key, setKey] = useState(() => params.get('k') || local.adminKey(code));
@@ -81,6 +82,7 @@ function AdminPanel({ code, adminKey, welcome, onLogout, params }) {
           <button className={tab === 'share' ? 'on' : ''} onClick={() => setTab('share')}><Share2 size={18} /> שיתוף</button>
           <button className={tab === 'posts' ? 'on' : ''} onClick={() => setTab('posts')}><LayoutList size={18} /> כתבות <span className="count">{posts.length}</span></button>
           <button className={tab === 'settings' ? 'on' : ''} onClick={() => setTab('settings')}><Settings size={18} /> עיצוב והגדרות</button>
+          <button className={tab === 'guide' ? 'on' : ''} onClick={() => setTab('guide')}><BookOpen size={18} /> מדריך</button>
         </nav>
         <div className="side-ctas">
           <a className="btn btn-primary" href={`#/n/${code}/screen`}><Monitor size={18} /> מסך ההקרנה</a>
@@ -92,6 +94,14 @@ function AdminPanel({ code, adminKey, welcome, onLogout, params }) {
         {welcome && <div className="welcome"><ShieldCheck size={22} /><div><b>הניוזלטר מוכן.</b> שמרו את קישור הניהול (בלשונית "שיתוף"). הוא הדרך היחידה לחזור לניהול ממכשיר אחר.</div></div>}
         {tab === 'share' && <SharePanel code={code} adminKey={adminKey} welcome={welcome} say={say} />}
         {tab === 'posts' && <PostsPanel code={code} adminKey={adminKey} ws={ws} posts={posts} hidden={hidden} reload={reload} setData={setData} say={say} />}
+        {tab === 'guide' && (
+          <div className="admin-section guide-tab">
+            <h2>מדריך</h2>
+            <div className="card"><GuideVideo /></div>
+            <div className="card"><FacilitatorGuide /></div>
+            <div className="card"><ParticipantGuide /><p className="muted small">ההוראות האלה מופיעות גם למשתתפים, במסך הכניסה לכתיבה.</p></div>
+          </div>
+        )}
         {tab === 'settings' && <SettingsPanel code={code} adminKey={adminKey} ws={ws} aiToday={data.ai_today} videosUsed={data.videos_used} reload={reload} say={say} />}
       </main>
       {toast}
