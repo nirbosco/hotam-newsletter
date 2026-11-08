@@ -22,7 +22,7 @@ export default function Home() {
       const r = await api.createWorkspace(name.trim(), subtitle.trim(), template);
       local.setAdminKey(r.code, r.admin_key);
       local.addRecent(r.code, name.trim(), true);
-      go(`/n/${r.code}/admin?welcome=1`);
+      go(`/n/${r.code}/admin?welcome=1${template === 'custom' ? '&tab=settings' : ''}`);
     } catch (e2) { setErr(errText(e2)); setBusy(null); }
   };
 
@@ -64,6 +64,7 @@ export default function Home() {
           <div className="field">
             <span>עיצוב</span>
             <TemplatePicker value={template} onChange={setTemplate} />
+            {template === 'custom' && <span className="muted small">את הלוגו והצבעים מגדירים במסך הבא.</span>}
           </div>
           <button className="btn btn-primary btn-lg" disabled={!!busy}>
             {busy === 'create' ? <Loader2 className="spin" size={20} /> : null}

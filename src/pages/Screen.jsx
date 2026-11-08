@@ -77,7 +77,7 @@ export default function Screen({ code }) {
       </div>
 
       <header className="masthead">
-        {theme.showLogo && <img src="./hotam-logo.png" alt="חותם" className="mast-logo" />}
+        {theme.logoSrc && <img src={theme.logoSrc} alt="" className="mast-logo" />}
         <h1>{ws.name}</h1>
         <div className="mast-line">
           <span>{ws.subtitle}</span>

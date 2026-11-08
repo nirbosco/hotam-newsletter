@@ -34,7 +34,7 @@ export default function Print({ code }) {
       </div>
 
       <header className="print-mast">
-        {theme.showLogo && <img src="./hotam-logo.png" alt="חותם" />}
+        {theme.logoSrc && <img src={theme.logoSrc} alt="" />}
         <h1>{ws.name}</h1>
         <p>{ws.subtitle} · {date} · {posts.length} כתבות</p>
       </header>

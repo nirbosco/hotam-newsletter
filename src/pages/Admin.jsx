@@ -4,8 +4,8 @@ import { useNewsletter } from '../lib/useNewsletter.js';
 import { api, errText } from '../lib/api.js';
 import { local } from '../lib/local.js';
 import { orderPosts, timeAgo } from '../lib/content.js';
-import { FONTS, TEMPLATES, resolveTheme } from '../lib/themes.js';
-import TemplatePicker from '../components/TemplatePicker.jsx';
+import { resolveTheme } from '../lib/themes.js';
+import DesignEditor, { designFromTheme, designToTheme } from '../components/DesignEditor.jsx';
 import { Spinner, NotFound, QR, useToast, copy, baseUrl } from '../components/Common.jsx';
 import { TypeTag } from '../components/Post.jsx';
 import QRCode from 'qrcode';
@@ -21,7 +21,7 @@ export default function Admin({ code, params }) {
   }, [params, code]);
 
   if (!key) return <AdminLogin code={code} onKey={(k) => { local.setAdminKey(code, k); setKey(k); }} />;
-  return <AdminPanel code={code} adminKey={key} welcome={params.get('welcome') === '1'} onLogout={() => { local.setAdminKey(code, null); setKey(null); }} />;
+  return <AdminPanel code={code} adminKey={key} params={params} welcome={params.get('welcome') === '1'} onLogout={() => { local.setAdminKey(code, null); setKey(null); }} />;
 }
 
 function AdminLogin({ code, onKey }) {
@@ -55,9 +55,9 @@ function AdminLogin({ code, onKey }) {
   );
 }
 
-function AdminPanel({ code, adminKey, welcome, onLogout }) {
+function AdminPanel({ code, adminKey, welcome, onLogout, params }) {
   const { data, error, loading, reload, setData } = useNewsletter(code, adminKey);
-  const [tab, setTab] = useState(welcome ? 'share' : 'posts');
+  const [tab, setTab] = useState(params?.get('tab') || (welcome ? 'share' : 'posts'));
   const [toast, say] = useToast();
   const ws = data?.workspace;
   useEffect(() => { if (ws) { document.title = `${ws.name} · ניהול`; local.addRecent(code, ws.name, true); } }, [ws, code]);
@@ -89,6 +89,7 @@ function AdminPanel({ code, adminKey, welcome, onLogout }) {
       </aside>
 
       <main className="admin-main">
+        {welcome && <div className="welcome"><ShieldCheck size={22} /><div><b>הניוזלטר מוכן.</b> שמרו את קישור הניהול (בלשונית "שיתוף"). הוא הדרך היחידה לחזור לניהול ממכשיר אחר.</div></div>}
         {tab === 'share' && <SharePanel code={code} adminKey={adminKey} welcome={welcome} say={say} />}
         {tab === 'posts' && <PostsPanel code={code} adminKey={adminKey} ws={ws} posts={posts} hidden={hidden} reload={reload} setData={setData} say={say} />}
         {tab === 'settings' && <SettingsPanel code={code} adminKey={adminKey} ws={ws} aiToday={data.ai_today} videosUsed={data.videos_used} reload={reload} say={say} />}
@@ -110,7 +111,6 @@ function SharePanel({ code, adminKey, welcome, say }) {
   };
   return (
     <div className="admin-section">
-      {welcome && <div className="welcome"><ShieldCheck size={22} /><div><b>הניוזלטר מוכן.</b> שמרו את קישור הניהול. הוא הדרך היחידה לחזור לניהול ממכשיר אחר.</div></div>}
       <h2>שיתוף</h2>
       <div className="share-grid">
         <div className="card share-qr">
@@ -213,10 +213,8 @@ function PostsPanel({ code, adminKey, ws, posts, hidden, reload, setData, say })
 function SettingsPanel({ code, adminKey, ws, aiToday, videosUsed, reload, say }) {
   const theme = useMemo(() => resolveTheme(ws), [ws]);
   const [f, setF] = useState(() => ({
-    name: ws.name, subtitle: ws.subtitle, template: ws.template,
-    primary: theme.colors.primary, accent: theme.colors.accent,
-    display: theme.fonts.display, body: theme.fonts.body,
-    showLogo: theme.showLogo, ai: ws.settings?.ai_enabled !== false,
+    name: ws.name, subtitle: ws.subtitle, ...designFromTheme(theme),
+    ai: ws.settings?.ai_enabled !== false,
     video: !!ws.settings?.video_enabled, videoQuota: ws.settings?.video_quota ?? 3,
     likes: ws.settings?.likes_enabled !== false, comments: ws.settings?.comments_enabled !== false,
   }));
@@ -227,14 +225,13 @@ function SettingsPanel({ code, adminKey, ws, aiToday, videosUsed, reload, say })
     try {
       await api.adminUpdate(code, adminKey, {
         name: f.name, subtitle: f.subtitle, template: f.template,
-        theme: { colors: { primary: f.primary, accent: f.accent }, fonts: { display: f.display, body: f.body }, showLogo: f.showLogo },
+        theme: designToTheme(f),
         settings: { ai_enabled: f.ai, video_enabled: f.video, video_quota: f.videoQuota, likes_enabled: f.likes, comments_enabled: f.comments },
       });
       await reload(); say('ההגדרות נשמרו');
     } catch (e) { say(errText(e), 'err'); }
     setBusy(false);
   };
-  const resetTheme = () => { const t = TEMPLATES[f.template] || TEMPLATES.hotam; set({ primary: t.colors.primary, accent: t.colors.accent, display: t.fonts.display, body: t.fonts.body, showLogo: !!t.brand }); };
   return (
     <div className="admin-section">
       <h2>עיצוב והגדרות</h2>
@@ -246,17 +243,7 @@ function SettingsPanel({ code, adminKey, ws, aiToday, videosUsed, reload, say })
         </div>
         <div className="card">
           <h3>עיצוב</h3>
-          <TemplatePicker value={f.template} onChange={(k) => { const t = TEMPLATES[k]; set({ template: k, primary: t.colors.primary, accent: t.colors.accent, display: t.fonts.display, body: t.fonts.body, showLogo: !!t.brand }); }} />
-          <div className="row" style={{ marginTop: 16 }}>
-            <label className="field color"><span>צבע ראשי</span><input type="color" value={f.primary} onChange={(e) => set({ primary: e.target.value })} /></label>
-            <label className="field color"><span>צבע משני</span><input type="color" value={f.accent} onChange={(e) => set({ accent: e.target.value })} /></label>
-          </div>
-          <div className="row">
-            <label className="field"><span>גופן כותרות</span><select value={f.display} onChange={(e) => set({ display: e.target.value })}>{FONTS.map((x) => <option key={x}>{x}</option>)}</select></label>
-            <label className="field"><span>גופן טקסט</span><select value={f.body} onChange={(e) => set({ body: e.target.value })}>{FONTS.map((x) => <option key={x}>{x}</option>)}</select></label>
-          </div>
-          <label className="check"><input type="checkbox" checked={f.showLogo} onChange={(e) => set({ showLogo: e.target.checked })} /> הצגת הלוגו של חותם</label>
-          <button className="btn btn-soft btn-sm" onClick={resetTheme}>חזרה לעיצוב המקורי</button>
+          <DesignEditor d={f} set={set} name={f.name} subtitle={f.subtitle} onError={(m) => say(m, 'err')} />
         </div>
         <div className="card">
           <h3>כלי AI</h3>

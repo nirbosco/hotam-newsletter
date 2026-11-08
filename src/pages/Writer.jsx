@@ -35,7 +35,7 @@ export default function Writer({ code, params }) {
     <div className="writer" style={themeStyle(theme)}>
       <header className="w-top">
         <div className="w-brand">
-          {theme.showLogo && <img src="./hotam-logo.png" alt="חותם" className="w-logo" />}
+          {theme.logoSrc && <img src={theme.logoSrc} alt="" className="w-logo" />}
           <b>{ws.name}</b>
         </div>
         <div className="w-actions">
