@@ -11,7 +11,7 @@ const CORS = {
 
 const GEMINI = "https://generativelanguage.googleapis.com/v1beta/models";
 const TEXT_MODEL = Deno.env.get("NL_TEXT_MODEL") ?? "gemini-2.5-flash";
-const IMAGE_MODEL = Deno.env.get("NL_IMAGE_MODEL") ?? "gemini-2.5-flash-image";
+const IMAGE_MODEL = Deno.env.get("NL_IMAGE_MODEL") ?? "gemini-3.1-flash-image";
 const KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
@@ -55,7 +55,8 @@ async function askJson(prompt: string, schema: unknown, temperature = 0.8) {
 async function headline(text: string) {
   const out = await askJson(
     `${AUDIENCE}
-הנה כתבה לניוזלטר. הצע שלוש כותרות קצרות וקולעות בעברית (עד 8 מילים כל אחת). עברית טבעית, כמו שעיתונאי ישראלי היה כותב, בלי תרגום מאנגלית, בלי סימני קריאה ובלי מירכאות.
+הנה כתבה לניוזלטר. הצע שלוש כותרות קצרות וקולעות בעברית (עד 8 מילים כל אחת), כל אחת בזווית אחרת.
+כללים: עברית ישראלית טבעית, כמו כותרת בעיתון מקומי טוב. בלי תרגום מאנגלית, בלי סימני קריאה, בלי מירכאות, בלי נקודתיים. בלי לחזור על אותו שורש פעמיים בכותרת (לא "טקס מרגש ריגש"). בלי מילים נבובות כמו "מיוחד", "מרגש", "חוויה", "חגיגי". בלי משלב גבוה: לא "נכח", "רבים", "קהל רב", "אף", "הינו". כותרת אומרת משהו קונקרטי מתוך הכתבה, בשפה שתלמיד או מורה היו משתמשים בה.
 
 הכתבה:
 ${text.slice(0, 6000)}`,
@@ -69,7 +70,8 @@ ${text.slice(0, 6000)}`,
 async function improve(html: string) {
   const out = await askJson(
     `${AUDIENCE}
-אתה עורך לשון של ניוזלטר. ערוך את הטקסט הבא: תקן שגיאות כתיב, דקדוק ופיסוק, והפוך אותו לזורם וקריא יותר. שמור על הקול, על התוכן ועל האורך של הכותבים. אל תוסיף עובדות, אל תוסיף כותרת ואל תוסיף סיכום. עברית טבעית ולא מתורגמת.
+אתה עורך לשון של ניוזלטר. ערוך את הטקסט הבא: תקן שגיאות כתיב, דקדוק ופיסוק, חלק משפטים ארוכים, והפוך אותו לזורם וקריא יותר.
+חשוב מאוד: שמור על הקול ועל המשלב של הכותבים. אם כתבו בשפה מדוברת, התוצאה נשארת מדוברת ונקייה, לא רשמית ולא ספרותית. אסור להכניס מילים גבוהות שהכותבים לא היו משתמשים בהן, כמו "נכחו", "אף", "הינו", "על מנת", "מהווה", "רבים" במקום "הרבה". אל תוסיף עובדות, כותרת, סיכום או מסר. שמור על אורך דומה. עברית ישראלית טבעית, לא מתורגמת.
 החזר HTML פשוט בלבד, עם התגים p, strong, em, ul, ol, li, blockquote. שמור תמונות (img) וציטוטים במקומם.
 
 הטקסט:
@@ -90,7 +92,7 @@ async function crossword(topic: string, count: number) {
       `${AUDIENCE}
 צור ${n + 4} מילים לתשבץ בעברית בנושא: "${topic.slice(0, 200)}".
 כללים למילים: מילה אחת בלבד (בלי רווחים, בלי מקפים, בלי ניקוד, בלי גרשיים), באורך 3 עד 9 אותיות, מילים מוכרות ולא נדירות, ובלי חזרות.
-לכל מילה כתוב הגדרה קצרה וברורה בעברית (עד 8 מילים) שלא מכילה את המילה עצמה או את השורש שלה.`,
+לכל מילה כתוב הגדרה קצרה וברורה בעברית (עד 8 מילים) שלא מכילה את המילה עצמה או את השורש שלה. ההגדרה חייבת להתאים בדיוק למילה כפי שהיא כתובה (למשל להגדרה \"הכוכב שעליו אנחנו חיים\" התשובה היא \"כדור הארץ\" ולכן לא מתאימה למילה \"ארץ\"). בלי נקודה בסוף ההגדרה. עברית מדוברת וטבעית, לא \"אנו\" ולא לשון ספרותית.`,
       {
         type: "object",
         properties: { words: { type: "array", items: { type: "object", properties: { word: { type: "string" }, clue: { type: "string" } }, required: ["word", "clue"] } } },
@@ -123,11 +125,15 @@ async function image(prompt: string, style: string, workspaceId: string) {
       role: "user",
       parts: [{ text: `${AUDIENCE}\nצור תמונה אחת לניוזלטר. סגנון: ${styleText}. בלי טקסט כתוב בתוך התמונה. יחס רוחב לגובה 4:3.\nהתיאור: ${prompt.slice(0, 1500)}` }],
     }],
-    generationConfig: { responseModalities: ["IMAGE"] },
+    generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
   });
-  const parts = data?.candidates?.[0]?.content?.parts ?? [];
+  const cand = data?.candidates?.[0];
+  const parts = cand?.content?.parts ?? [];
   const img = parts.find((p: any) => p.inlineData?.data || p.inline_data?.data);
-  if (!img) throw new Error("blocked_or_empty");
+  if (!img) {
+    const why = `${cand?.finishReason ?? ""} ${data?.promptFeedback?.blockReason ?? ""} ${textOf(data).slice(0, 120)}`.trim();
+    throw new Error(/SAFETY|PROHIBITED|BLOCK/i.test(why) ? `blocked: ${why}` : `no_image: ${why}`);
+  }
   const inline = img.inlineData ?? img.inline_data;
   const mime = inline.mimeType ?? inline.mime_type ?? "image/png";
   const ext = mime.includes("jpeg") ? "jpg" : mime.includes("webp") ? "webp" : "png";
