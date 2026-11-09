@@ -56,4 +56,5 @@ export function copy(text) {
   try { navigator.clipboard.writeText(text); return true; } catch { return false; }
 }
 
-export const baseUrl = () => window.location.href.split('#')[0].split('?')[0];
+// כתובת ציבורית קבועה (אם הוגדרה בבנייה), אחרת הכתובת הנוכחית
+export const baseUrl = () => import.meta.env.VITE_PUBLIC_URL || window.location.href.split('#')[0].split('?')[0];
