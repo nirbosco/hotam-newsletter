@@ -64,7 +64,7 @@ export function GuideVideo() {
   return (
     <div className="guide-video">
       <video src={VIDEO_SRC} poster={VIDEO_POSTER} controls playsInline preload="none">
-        <track kind="captions" srcLang="he" label="עברית" src="./guide-video.vtt" default />
+        <track kind="captions" srcLang="he" label="עברית" src="./guide-video.vtt" />
       </video>
     </div>
   );
